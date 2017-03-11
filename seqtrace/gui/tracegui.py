@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (C) 2014 Brian J. Stucky
+# Copyright (C) 2014 Brian J. Stucky, 2017 Anton Chaynikov
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -68,6 +68,7 @@ class SequenceTraceViewer:
         self.bcpadding = 4
 
         self.show_confidence = True
+        self.show_index = True
 
         self.sigmax = sequencetrace.getMaxTraceVal() + (sequencetrace.getMaxTraceVal() / 12)
 
@@ -114,6 +115,13 @@ class SequenceTraceViewer:
 
     def setShowConfidence(self, newval):
         self.show_confidence = newval
+
+        # queue a redraw of the window
+        width, height = self.drawingarea.window.get_size()
+        self.drawingarea.window.invalidate_rect(gtk.gdk.Rectangle(0, 0, width, height), False)
+        
+    def setShowIndex(self, newval):
+        self.show_index = newval
 
         # queue a redraw of the window
         width, height = self.drawingarea.window.get_size()
@@ -239,6 +247,8 @@ class SequenceTraceViewer:
         y = drawheight + self.bcpadding
 
         confbarcolor = gtk.gdk.color_parse('#c8c8c8')
+        confbary = 6 + (15 if self.show_index else 0)
+        indexcolor = gtk.gdk.color_parse('#000000')
 
         for index in range(startbcindex, endbcindex):
             # Get the base and position.
@@ -247,13 +257,21 @@ class SequenceTraceViewer:
 
             x = int(pos * xscale)
 
+            if self.show_index and index % 5 == 0:
+                cr.set_source_color(indexcolor)
+                self.bclayout.set_text(str(index))
+                txtwidth = self.bclayout.get_pixel_size()[0]
+                cr.move_to(x - (txtwidth/2), 6)
+                cr.layout_path(self.bclayout)
+                cr.fill()
+            
             if self.show_confidence:
                 # Draw the confidence bar.
                 bcconf = self.seqt.getBaseCallConf(index)
                 cr.set_source_color(confbarcolor)
                 #hue = float(bcconf) * (conf_hue_best - conf_hue_worst) / 61 + conf_hue_worst
                 #gc.set_rgb_fg_color(gtk.gdk.color_from_hsv(hue, 0.34, 1.0))
-                cr.rectangle(x-6, 6, 12, (confbarmax*bcconf)/61)
+                cr.rectangle(x-6, confbary, 12, (confbarmax*bcconf)/61)
                 cr.fill()
 
                 # Draw the confidence score.
@@ -261,7 +279,7 @@ class SequenceTraceViewer:
                 cr.set_source_color(gtk.gdk.color_from_hsv(hue, 1.0, 0.9))
                 self.bclayout.set_text(str(bcconf))
                 txtwidth = self.bclayout.get_pixel_size()[0]
-                cr.move_to(x - (txtwidth/2), 6)
+                cr.move_to(x - (txtwidth/2), confbary)
                 cr.layout_path(self.bclayout)
                 cr.fill()
 
@@ -703,6 +721,21 @@ class SequenceTraceLayout(gtk.VBox):
         t_item.set_tooltip_text('Turn the display of phred scores on or off')
         t_item.set_expand(False)
         toolbar.insert(t_item, -1)
+        
+        # build the toggle button for indexes
+        toggle = gtk.CheckButton()
+        toggle.set_label('indexes')
+        toggle.set_active(True)
+        toggle.connect('toggled', self.showIndexToggled)
+
+        # place the toggle button in a VButtonBox to prevent it from expanding vertically
+        vbox = gtk.VButtonBox()
+        vbox.pack_start(toggle, False)
+        t_item = gtk.ToolItem()
+        t_item.add(vbox)
+        t_item.set_tooltip_text('Turn the display of indexes on or off')
+        t_item.set_expand(False)
+        toolbar.insert(t_item, -1)
 
         # if we got two sequences, build a combo box to choose between them
         if len(self.seqt_viewers) == 2:
@@ -760,6 +793,13 @@ class SequenceTraceLayout(gtk.VBox):
                 viewer.setShowConfidence(toggle.get_active())
         else:
             self.seqt_viewers[self.selected_seqtv].setShowConfidence(toggle.get_active())
+            
+    def showIndexToggled(self, toggle):
+        if self.selected_seqtv == len(self.seqt_viewers):
+            for viewer in self.seqt_viewers:
+                viewer.setShowIndex(toggle.get_active())
+        else:
+            self.seqt_viewers[self.selected_seqtv].setShowIndex(toggle.get_active())
 
     def zoomButtons(self, button, increment):
         """
