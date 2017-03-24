@@ -1,4 +1,4 @@
-# Copyright (C) 2014 Brian J. Stucky
+# Copyright (C) 2014 Brian J. Stucky, 2017 Anton Chaynikov
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -174,7 +174,7 @@ class SeqTraceProjReader:
 class ProjectItemData:
     def __init__(self):
         self.parent = None
-        self.children = ()
+        self.children = []
         self.name = ''
         self.notes = ''
         self.itemtype = None
@@ -195,13 +195,13 @@ class ProjectItemData:
         self.setIsReverse(item.getIsReverse())
         
         children = item.getChildren()
-        if len(children) == 2:
-            child1 = ProjectItemData()
-            child1.copyFromItem(children[0])
-            child2 = ProjectItemData()
-            child2.copyFromItem(children[1])
-
-            self.setChildren(child1, child2)
+        if len(children) > 0:
+            chn = []
+            for child in children:
+                ch = ProjectItemData()
+                ch.copyFromItem(child)
+                chn.append(ch)
+            self.setChildren(chn)
 
     def toDict(self):
         """
@@ -224,9 +224,10 @@ class ProjectItemData:
         
         res['children'] = []
         children = self.getChildren()
-        if len(children) == 2:
-            res['children'].append(children[0].toDict())
-            res['children'].append(children[1].toDict())
+        if len(children) > 0:
+            for child in children:
+                res['children'].append(child.toDict())
+            
 
         return res
 
@@ -240,13 +241,14 @@ class ProjectItemData:
         self.setNotes(dict_in['notes'])
         self.setIsReverse(dict_in['isreverse'])
         
-        if len(dict_in['children']) == 2:
-            child1 = ProjectItemData()
-            child1.fromDict(dict_in['children'][0])
-            child2 = ProjectItemData()
-            child2.fromDict(dict_in['children'][1])
-
-            self.setChildren(child1, child2)
+        if len(dict_in['children']) > 0:
+            chn = []
+            for child in dict_in['children']:
+                ch = ProjectItemData()
+                ch.fromDict(child)
+                chn.append(ch)
+            
+            self.setChildren(chn)
 
     def getName(self):
         return self.name
@@ -300,8 +302,8 @@ class ProjectItemData:
     def getChildren(self):
         return self.children
 
-    def setChildren(self, item1, item2):
-        self.children = (item1, item2)
+    def setChildren(self, array):
+        self.children = array
 
     def getIsReverse(self):
         return self.is_reverse
@@ -340,6 +342,14 @@ class TreeStoreProjectItem:
             f1 = self.ts.iter_children(self.tsiter)
             f2 = self.ts.iter_next(f1)
             return (self.ts.get_value(f1, FILE_NAME), self.ts.get_value(f2, FILE_NAME))
+        elif self.ts.get_value(self.tsiter, NODE_TYPE) == 'group':
+            filenames = []
+            f = self.ts.iter_children(self.tsiter)
+            while f != None:
+                filenames.append(self.ts.get_value(f, FILE_NAME))
+                f = self.ts.iter_next(f)
+            return filenames
+        
 
     def isFile(self):
         return self.ts.get_value(self.tsiter, NODE_TYPE) == 'file'
@@ -447,6 +457,13 @@ class TreeStoreProjectItem:
             child1 = TreeStoreProjectItem(ch1iter, self.proj)
             child2 = TreeStoreProjectItem(self.ts.iter_next(ch1iter), self.proj)
             return (child1, child2)
+        elif self.ts.get_value(self.tsiter, NODE_TYPE) == 'group':
+            children = []
+            chiter = self.ts.iter_children(self.tsiter)
+            while chiter != None:
+                children.append(TreeStoreProjectItem(chiter, self.proj))
+                chiter = self.ts.iter_next(chiter)
+            return children
         else:
             return ()
 
@@ -476,7 +493,7 @@ class ProjectIter:
 
 
 # 0: file name/node name
-# 1: node type (either 'file' or 'frwdrev')
+# 1: node type (either 'file' or 'frwdrev' or 'group')
 # 2: node ID number
 # 3: True if consensus sequence has been approved for this node
 # 4: compact consensus sequence for this node
@@ -732,28 +749,31 @@ class SequenceTraceProject(Observable):
     # rev_index specifies which one of the items should be treated as a reverse sequencing read.  If
     # index < 0 or index > 1, neither item will be marked as a reverse read.
     def associateItems(self, items, node_name):
-        # verify we only got two rows
-        if len(items) != 2:
+        # verify we got at least two rows
+        if len(items) < 2:
             raise Exception()
 
         # get treestore references to the selected rows
-        f1 = items[0].getTsiter()
-        f2 = items[1].getTsiter()
+        f = []
+        for item in items:
+            f.append(item.getTsiter())
 
-        # make sure they are both files
-        if not(items[0].isFile()) or not(items[1].isFile()):
-            raise Exception()
+        # make sure they are all files
+        for item in items:
+            if not(item.isFile()):
+                raise Exception()
 
-        # make sure they are both at the root level
-        if (items[0].hasParent()) or (items[1].hasParent()):
-            raise Exception()
+        # make sure they are all at the root level
+        for item in items:
+            if item.hasParent():
+                raise Exception()
 
         # create a new associative node and add the selected nodes as children
-        parent = self.ts.insert_before(None, f1, (node_name, 'frwdrev', self.idnum, False, '', '', False, '', False))
+        parent = self.ts.insert_before(None, f[0], (node_name, 'group', self.idnum, False, '', '', False, '', False))
         self.idnum += 1
 
-        self.moveRowToParent(f1, parent)
-        self.moveRowToParent(f2, parent)
+        for thing in f:
+            self.moveRowToParent(thing, parent)
 
         self.setSaveState(False)
 

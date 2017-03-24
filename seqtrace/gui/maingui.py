@@ -659,9 +659,9 @@ class MainWindow(gtk.Window, CommonDialogs):
 
             # handle a few UI elements with more specific selection requirements
             assoc_files = self.sel_proj_ag.get_action('Associate_Files')
-            if (sel_cnt == 2) and not(assoc_files.get_sensitive()):
+            if (sel_cnt >= 2) and not(assoc_files.get_sensitive()):
                 assoc_files.set_sensitive(True)
-            elif (sel_cnt != 2) and assoc_files.get_sensitive():
+            elif (sel_cnt < 2) and assoc_files.get_sensitive():
                 assoc_files.set_sensitive(False)
 
             auto_assoc = self.sel_proj_ag.get_action('Auto_Associate_Selected')
