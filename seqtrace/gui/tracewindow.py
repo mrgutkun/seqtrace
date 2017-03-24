@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (C) 2014 Brian J. Stucky
+# Copyright (C) 2014 Brian J. Stucky, 2017 Anton Chaynikov
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -219,8 +219,8 @@ class TraceWindow(gtk.Window, CommonDialogs, Observable):
         self.sel_edit_ag = gtk.ActionGroup('selected_edit_actions')
         self.sel_edit_ag.add_actions([
             ('Copy', gtk.STOCK_COPY, '_Copy selected base(s) to clipboard', '<ctl>c', 'Copy the selected base(s) to the system clipboard', self.copyConsBases),
-            ('Delete', gtk.STOCK_DELETE, '_Delete selected base(s)', None, 'Delete the selected base(s) from the working sequence', self.deleteConsBases),
-            ('Modify', gtk.STOCK_EDIT, '_Modify selected base(s)...', None, 'Edit the selected base(s)', self.editConsBases)])
+            ('Delete', gtk.STOCK_DELETE, '_Delete selected base(s)', "<Ctrl>d", 'Delete the selected base(s) from the working sequence', self.deleteConsBases),
+            ('Modify', gtk.STOCK_EDIT, '_Modify selected base(s)...', "<Ctrl>e", 'Edit the selected base(s)', self.editConsBases)])
 
         self.uim = gtk.UIManager()
         self.add_accel_group(self.uim.get_accel_group())

@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (C) 2014 Brian J. Stucky
+# Copyright (C) 2014 Brian J. Stucky, 2017 Anton Chaynikov
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -375,6 +375,7 @@ class MainWindow(gtk.Window, CommonDialogs):
             <menuitem action="About" />
         </menu></menubar>
         <popup name="projview_popup">
+            <menuitem action="Popup_View_Trace" />
             <menuitem action="Popup_Rename_Row" />
             <menuitem action="Popup_Edit_Notes" />
             <separator />
@@ -446,11 +447,11 @@ class MainWindow(gtk.Window, CommonDialogs):
                 self.deleteSelSeqs),
             ('View_File', gtk.STOCK_FIND, '_View selected trace file(s)...', None, 'View the selected trace file(s)',
                 self.projectViewFiles),
-            ('Remove_File', gtk.STOCK_DELETE, '_Remove selected trace file(s)', None,
+            ('Remove_File', gtk.STOCK_DELETE, '_Remove selected trace file(s)', "<Ctrl>d",
                 'Remove the selected trace file(s) from the project', self.projectRemoveFiles),
             ('Find_FwdRev', None, '_Find and mark forward/reverse', None,
                 'Identify the selected trace files as forward or reverse reads, if possible', self.findFwdRev),
-            ('Associate_Files', None, '_Group selected forward/reverse files', None,
+            ('Associate_Files', None, '_Group selected forward/reverse files', "<Ctrl>g",
                 'Associate the selected trace files as complementary forward/reverse traces', self.projectAssociateFiles),
             ('Dissociate_Files', None, '_Ungroup forward/reverse files', None,
                 'Remove the selected forward/reverse trace file associations', self.projectDissociateFiles),
@@ -463,9 +464,10 @@ class MainWindow(gtk.Window, CommonDialogs):
         # these actions are specific to the project viewer context popup menu
         self.popup_proj_ag = gtk.ActionGroup('project_actions_popup')
         self.popup_proj_ag.add_actions([
+            ('Popup_View_Trace', gtk.STOCK_FIND, '_View trace file(s)', None, 'View the selected trace file(s)', self.projectViewFiles),
             ('Popup_Remove_File', gtk.STOCK_REMOVE, '_Remove trace file', None, 'Remove the selected trace file from the project',
                 self.projectRemoveFiles),
-            ('Popup_Delete_Sel_Seqs', None, 'Delete saved sequence', None, 'Deleted the saved consensus sequence', self.deleteSelSeqs),
+            ('Popup_Delete_Sel_Seqs', None, 'Delete saved sequence', None, 'Delete the saved consensus sequence', self.deleteSelSeqs),
             ('Popup_Rename_Row', None, 'Rename', None, 'Rename the forward/reverse group', self.popupRenameRow),
             ('Popup_Edit_Notes', gtk.STOCK_EDIT, 'Edit notes', None, 'Edit the notes/description for this item', self.popupEditNotes)
             ])
