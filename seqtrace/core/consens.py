@@ -1,4 +1,4 @@
-# Copyright (C) 2014 Brian J. Stucky
+# Copyright (C) 2014 Brian J. Stucky, 2017 Anton Chaynikov
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -267,10 +267,9 @@ class ConsensSeqBuilder:
 
         #self.seqtraces[0] = sequencetraces[0]
         self.seqtraces = []
-        self.seqtraces.append(sequencetraces[0])
-        if self.numseqs == 2:
-            self.seqtraces.append(sequencetraces[1])
-
+        for st in sequencetraces:
+            self.seqtraces.append(st)
+        
         # Set up lists for the aligned sequences and alignment indices.
         self.alignedseqs = [None] * self.numseqs
         self.seqindexes = [None] * self.numseqs
@@ -291,15 +290,24 @@ class ConsensSeqBuilder:
         min_confscore = self.settings.getMinConfScore()
 
         # Get the raw sequences and align the forward/reverse traces if we have both.
-        if self.numseqs == 2:
+        if self.numseqs == 1:
+            self.alignedseqs[0] = self.seqtraces[0].getBaseCalls()
+            self.seqindexes[0] = range(0, len(self.alignedseqs[0]))
+        elif self.numseqs == 2:
             align = PairwiseAlignment()
             align.setSequences(self.seqtraces[0].getBaseCalls(), self.seqtraces[1].getBaseCalls())
             align.doAlignment()
             self.alignedseqs[0], self.alignedseqs[1] = align.getAlignedSequences()
             self.seqindexes[0], self.seqindexes[1] = align.getAlignedSeqIndexes()
+        elif self.numseqs > 2:
+            align = PairwiseAlignment()
+            align.setSequences(self.seqtraces[0].getBaseCalls(), self.seqtraces[1].getBaseCalls())
+            align.doAlignment()
+            self.alignedseqs[0], self.alignedseqs[1] = align.getAlignedSequences()
+            self.seqindexes[0], self.seqindexes[1] = align.getAlignedSeqIndexes()
+            print(self.alignedseqs, self.seqindexes)
         else:
-            self.alignedseqs[0] = self.seqtraces[0].getBaseCalls()
-            self.seqindexes[0] = range(0, len(self.alignedseqs[0]))
+            raise
 
         # If we have primers, align them to the alignment or single sequence.
         haveprimers = (self.settings.getForwardPrimer() != '' and self.settings.getReversePrimer() != '')
@@ -782,7 +790,7 @@ class ConsensSeqBuilder:
         alignment-length string containing the aligned primer in the
         appropriate location is saved as self.alignedprimers.
         """
-        if self.numseqs == 2:
+        if self.numseqs >= 2:
             return
 
         # Figure out if we're working on a reverse trace and get the
@@ -883,7 +891,7 @@ class ConsensSeqBuilder:
         the trace alignment.  If so, the right end of the consensus sequence
         is trimmed to remove the primer and any additional trailing sequence.
         """
-        if self.numseqs == 2:
+        if self.numseqs >= 2:
             return
 
         # Determine the percent of primer bases that matched the trace data.
