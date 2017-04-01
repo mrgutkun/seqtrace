@@ -27,3 +27,5 @@ except ImportError:
     # If that fails, load the Python module.
     from pyalign import PairwiseAlignment
 
+# This is not implemented in C, and not expected to be: actual alignment is done by MUSCLE executable anyway.
+from pyalign import MultipleAlignment

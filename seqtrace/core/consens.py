@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from seqtrace.core.align import PairwiseAlignment
+from seqtrace.core.align import PairwiseAlignment, MultipleAlignment
 import seqtrace.core.sequencetrace as sequencetrace
 from observable import Observable
 
@@ -300,12 +300,12 @@ class ConsensSeqBuilder:
             self.alignedseqs[0], self.alignedseqs[1] = align.getAlignedSequences()
             self.seqindexes[0], self.seqindexes[1] = align.getAlignedSeqIndexes()
         elif self.numseqs > 2:
-            align = PairwiseAlignment()
-            align.setSequences(self.seqtraces[0].getBaseCalls(), self.seqtraces[1].getBaseCalls())
+            align = MultipleAlignment()
+            align.setSequences([trace.getBaseCalls() for trace in self.seqtraces])
             align.doAlignment()
-            self.alignedseqs[0], self.alignedseqs[1] = align.getAlignedSequences()
-            self.seqindexes[0], self.seqindexes[1] = align.getAlignedSeqIndexes()
-            print(self.alignedseqs, self.seqindexes)
+            self.alignedseqs = align.getAlignedSequences()
+            self.seqindexes = align.getAlignedSeqIndexes()
+            #print(self.alignedseqs)
         else:
             raise
 
@@ -314,25 +314,33 @@ class ConsensSeqBuilder:
         if haveprimers:
             if self.numseqs == 1:
                 self.alignPrimerToSequence()
-            else:
+            elif self.numseqs == 2:
                 self.alignPrimersToAlignment()
+            elif self.numseqs > 2:
+                raise
+            else:
+                raise
 
         # Build the consensus sequence.
         if self.numseqs == 1:
             self.makeSingleConsensus(min_confscore)
-        else:
+        elif self.numseqs >= 2:
             if self.settings.getConsensusAlgorithm() == 'Bayesian':
                 self.makeBayesianConsensus(min_confscore)
             else:
                 self.makeLegacyConsensus(min_confscore)
+        else:
+            raise
 
         # Do sequence trimming, if requested.
         if self.settings.getTrimConsensus():
             if self.settings.getTrimPrimers() and haveprimers:
                 if self.numseqs == 1:
                     self.trimPrimerFromSequence()
-                else:
+                elif self.numseqs >= 2:
                     self.trimPrimersFromAlignment()
+                else:
+                    raise
 
             if self.settings.getTrimEndGaps():
                 self.trimEndGaps()
@@ -369,45 +377,54 @@ class ConsensSeqBuilder:
 
 
             # Get the base calls at this position.
-            base1 = self.alignedseqs[0][cnt]
-            base2 = self.alignedseqs[1][cnt]
+            bases = []
+            count_ = 0
+            countN = 0
+            for seq in self.alignedseqs:
+                bases.append(seq[cnt])
+                if seq[cnt] == '-':
+                    count_ += 1
+                if seq[cnt] == 'N':
+                    countN += 1
 
             # Determine the consensus base at this position.
             gapflankscore = -1.0
-            if base1 not in ('-', 'N') and base2 not in ('-', 'N'):
-                # Both traces have usable data, so calculate the posterior probability
-                # distribution of nucleotides using Bayes' Theorem, then determine the
-                # consensus base.
-                self.calcPosteriorBasePrDist(
-                        base1, self.seqtraces[0].getBaseCallConf(self.seqindexes[0][cnt]),
-                        base2, self.seqtraces[1].getBaseCallConf(self.seqindexes[1][cnt]), nppd)
-                cbase, cscore = self.getMostProbableBase(nppd)
-            elif base1 not in ('-', 'N'):
-                # Only the first trace has usable data.
-                cbase = base1
-                cscore = self.seqtraces[0].getBaseCallConf(self.seqindexes[0][cnt])
-
+            
+            if count_ == len(self.alignedseqs):
+                # We encountered a gap in all sequences due to the primer alignment.
+                cbase = ' '
+                cscore = 0
+            elif count_ + countN == len(self.alignedseqs):
+            # Neither trace has usable data.
+                cbase = 'N'
+                cscore = 1
+            elif count_ + countN == len(self.alignedseqs)-1:
+                # Exactly one trace has usable data.
+                for i, b in enumerate(bases):
+                    if b not in ('-', 'N'):
+                        index = i
+                        cbase = b
+                        break
+                cscore = self.seqtraces[index].getBaseCallConf(self.seqindexes[index][cnt])
+                # Somehow depends on 2-alignments, not yet thought-through and re-implemented.
                 # Check if this is an internal gap.
                 if cnt >= lgapstart and cnt <= rgapstart and base2 == '-':
                     # It is, so get the mean score of the flanking bases.
                     gapflankscore = self.getGapFlankingScore(1, cnt)
-            elif base2 not in ('-', 'N'):
-                # Only the second trace has usable data.
-                cbase = base2
-                cscore = self.seqtraces[1].getBaseCallConf(self.seqindexes[1][cnt])
-
-                # Check if this is an internal gap.
-                if cnt >= lgapstart and cnt <= rgapstart and base1 == '-':
-                    # It is, so get the mean score of the flanking bases.
-                    gapflankscore = self.getGapFlankingScore(0, cnt)
-            elif base1 == '-' and base2 == '-':
-                # We encountered a gap in both sequences due to the primer alignment.
-                cbase = ' '
-                cscore = 0
             else:
-                # Neither trace has usable data.
-                cbase = 'N'
-                cscore = 1
+                # Several traces have usable data, so calculate the posterior probability
+                # distribution of nucleotides using Bayes' Theorem, then determine the
+                # consensus base.
+                bases2 = []
+                scores = []
+                for i, b in enumerate(bases):
+                    if b not in ('-', 'N'):
+                        bases2.append(b)
+                        scores.append(self.seqtraces[i].getBaseCallConf(self.seqindexes[i][cnt]))
+                
+                self.calcPosteriorBasePrDist(bases2, scores, nppd)
+                cbase, cscore = self.getMostProbableBase(nppd)
+                
 
             # Update the consensus sequence and associated quality score.
             if cscore < min_confscore and cbase != ' ':
@@ -450,11 +467,18 @@ class ConsensSeqBuilder:
                 cbase = base
 
         # Calculate the Phred-type quality score of the most probable base.
+        # Scores of ~160+ give the apparaent probability of 1.0, so instead of 
+        # log(1-nppd[cbase]) we sum probabilities of other three bases.
+        # Scores of ~3080+ zero even those.
         if nppd[cbase] > 0:
-            cscore = -10.0 * math.log10(1.0 - nppd[cbase])
+            err = sum([val for key, val in nppd.iteritems() if key != cbase])
+            if err == 0.0:
+                cscore = 3250
+            else:
+                cscore = -10.0 * math.log10(err)
         else:
             cscore = 0
-
+        
         # Add a very small quantity is added to the calculated confidence score to
         # ensure that values very near the minimum confidence score are accepted.
         # Without this, values that should be exactly equal to the minimum are sometimes
@@ -503,30 +527,46 @@ class ConsensSeqBuilder:
             # Then assign the correct call probabilities.
             for base in self.bases3[basecall]:
                 distdict[base] = (1 - eprob) / 3.0
+        elif basecall == 'N':
+            # We have no information about nucleotide, so generate an 
+            # unbiased prior.
+            for base in self.bases:
+                distdict[base] = 1 / 4.0
 
-    def calcPosteriorBasePrDist(self, base1, score1, base2, score2, distdict):
+    def calcPosteriorBasePrDist(self, bases, scores, distdict):
         """
         Uses Bayes' theorem to calculate a posterior distribution of nucleotide
         probabilities with the provided base calls and confidence scores.  The
         result is returned in the argument "distdict", which is expected to be a
         dictionary with elements indexed by 'A', 'T', 'G', and 'C'.
         """
-        # Get the prior distribution using the 1st base call and quality score.
-        prior = {'A': 0.0, 'T': 0.0, 'G': 0.0, 'C': 0.0}
-        self.defineBasePrDist(base1, score1, prior)
+        # Get the unbiased prior distribution
+        self.defineBasePrDist('N', 0, distdict)
 
-        # Use distdict to hold the conditional probabilities for the 2nd base call.
-        self.defineBasePrDist(base2, score2, distdict)
-
-        # Calculate the shared denominator for Bayes' theorem, which is the total
-        # probability of observing the 2nd base call.
-        denom = 0.0
-        for base in self.bases:
-            denom += distdict[base] * prior[base]
-
-        # Calculate the posterior probability distribution.
-        for base in self.bases:
-            distdict[base] = (distdict[base] * prior[base]) / denom
+        for b, sc in zip(bases, scores):
+        
+            # Generate update probabilities for the base
+            update = {'A': 0.0, 'T': 0.0, 'G': 0.0, 'C': 0.0}
+            self.defineBasePrDist(b, sc, update)
+            
+            # Calculate the normalizing denominator for Bayes' theorem
+            
+            # We can actually work with odd ratios throughout application af Bayes, 
+            # and only convert those into probabilities after. The problem is, naive Python 
+            # only allows for 53 bits of precision, which does not play well with multiple 
+            # ~20-bit updates. So we normalize odds to probabilities after each update.
+            # Ideally, this should be implemented not in terms of probabilities, but 
+            # in terms of scores, which are logarithmic and do not suffer from 
+            # accuracy loss or limitations. Proper modification of Bayes' theorem
+            # in logarithms is left as an exercise to the reader.
+            
+            denom = 0.0
+            for base in self.bases:
+                denom += distdict[base] * update[base]
+            
+            # Calculate the posterior probability distribution.
+            for base in self.bases:
+                distdict[base] = (distdict[base] * update[base]) / denom
 
     def makeLegacyConsensus(self, min_confscore):
         """

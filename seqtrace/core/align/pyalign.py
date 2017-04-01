@@ -13,6 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
+from Bio.Align.Applications import MuscleCommandline
+from Bio import AlignIO
+from Bio import SeqIO
+
+import subprocess
+import sys
 
 class PairwiseAlignment:
     """
@@ -185,6 +194,137 @@ class PairwiseAlignment:
                 self.seq2indexed[cnt] = seq2gv
             else:
                 seq2gv -= 1
+
+        #print self.seq1indexed
+
+class MultipleAlignment:
+    """
+    Employs biopython's interface to MUSCLE to calculate alignment of multiple sequences.
+    Documentation of biopython is avaliable at http://biopython.org/wiki/Biopython , of MUSCLE - at http://www.drive5.com/muscle/ .
+    In case of bitrot, both should be retrievable with https://archive.org .
+    Penalties for gaps and mismatches are taken from PairwiseAlginment above.
+    """
+    def __init__(self):
+        # Define the substitution score matrix.  This matrix includes all IUPAC DNA
+        # nucleotide codes.  The scores were generated as follows.  Perfect matches
+        # get 6 "points" and complete mismatches get -6 points.  Ambiguous nucleotides
+        # are scored as the average score of all possible matches/mismatches. Another
+        # way to think of this is that the score for an ambiguous nucleotide will fall
+        # between 6 and -6 according to the probability of an exact match.
+        # Mathematically, this can be expressed as score = P(exact match) * 12 - 6.
+        # Multiplying by 12 simply provides a scaling factor so that most of the scores
+        # work out to integer values.
+        self.svals = {
+            'A': {'A':  6, 'T': -6, 'G': -6, 'C': -6, 'W':  0, 'S': -6, 'M':  0, 'K': -6, 'R':  0, 'Y': -6, 'B': -6, 'D': -2, 'H': -2, 'V': -2, 'N': -3},
+            'T': {'A': -6, 'T':  6, 'G': -6, 'C': -6, 'W':  0, 'S': -6, 'M': -6, 'K':  0, 'R': -6, 'Y':  0, 'B': -2, 'D': -2, 'H': -2, 'V': -6, 'N': -3},
+            'G': {'A': -6, 'T': -6, 'G':  6, 'C': -6, 'W': -6, 'S':  0, 'M': -6, 'K':  0, 'R':  0, 'Y': -6, 'B': -2, 'D': -2, 'H': -6, 'V': -2, 'N': -3},
+            'C': {'A': -6, 'T': -6, 'G': -6, 'C':  6, 'W': -6, 'S':  0, 'M':  0, 'K': -6, 'R': -6, 'Y':  0, 'B': -2, 'D': -6, 'H': -2, 'V': -2, 'N': -3},
+            'W': {'A':  0, 'T':  0, 'G': -6, 'C': -6, 'W':  0, 'S': -6, 'M': -3, 'K': -3, 'R': -3, 'Y': -3, 'B': -4, 'D': -2, 'H': -2, 'V': -4, 'N': -3},
+            'S': {'A': -6, 'T': -6, 'G':  0, 'C':  0, 'W': -6, 'S':  0, 'M': -3, 'K': -3, 'R': -3, 'Y': -3, 'B': -2, 'D': -4, 'H': -4, 'V': -2, 'N': -3},
+            'M': {'A':  0, 'T': -6, 'G': -6, 'C':  0, 'W': -3, 'S': -3, 'M':  0, 'K': -6, 'R': -3, 'Y': -3, 'B': -4, 'D': -4, 'H': -2, 'V': -2, 'N': -3},
+            'K': {'A': -6, 'T':  0, 'G':  0, 'C': -6, 'W': -3, 'S': -3, 'M': -6, 'K':  0, 'R': -3, 'Y': -3, 'B': -2, 'D': -2, 'H': -4, 'V': -4, 'N': -3},
+            'R': {'A':  0, 'T': -6, 'G':  0, 'C': -6, 'W': -3, 'S': -3, 'M': -3, 'K': -3, 'R':  0, 'Y': -6, 'B': -4, 'D': -2, 'H': -4, 'V': -2, 'N': -3},
+            'Y': {'A': -6, 'T':  0, 'G': -6, 'C':  0, 'W': -3, 'S': -3, 'M': -3, 'K': -3, 'R': -6, 'Y':  0, 'B': -2, 'D': -4, 'H': -2, 'V': -4, 'N': -3},
+            'B': {'A': -6, 'T': -2, 'G': -2, 'C': -2, 'W': -4, 'S': -2, 'M': -4, 'K': -2, 'R': -4, 'Y': -2, 'B': -2, 'D': -3, 'H': -3, 'V': -3, 'N': -3},
+            'D': {'A': -2, 'T': -2, 'G': -2, 'C': -6, 'W': -2, 'S': -4, 'M': -4, 'K': -2, 'R': -2, 'Y': -4, 'B': -3, 'D': -2, 'H': -3, 'V': -3, 'N': -3},
+            'H': {'A': -2, 'T': -2, 'G': -6, 'C': -2, 'W': -2, 'S': -4, 'M': -2, 'K': -4, 'R': -4, 'Y': -2, 'B': -3, 'D': -3, 'H': -2, 'V': -3, 'N': -3},
+            'V': {'A': -2, 'T': -6, 'G': -2, 'C': -2, 'W': -4, 'S': -2, 'M': -2, 'K': -4, 'R': -2, 'Y': -4, 'B': -3, 'D': -3, 'H': -3, 'V': -2, 'N': -3},
+            'N': {'A': -3, 'T': -3, 'G': -3, 'C': -3, 'W': -3, 'S': -3, 'M': -3, 'K': -3, 'R': -3, 'Y': -3, 'B': -3, 'D': -3, 'H': -3, 'V': -3, 'N': -3}
+        }
+
+        # The penalty for any gap (except the end gaps) is the same as a base mismatch.
+        self.gapp = -6
+
+        self.seqs = []
+
+        self.seqsaligned = []
+        
+        self.seqsindexed = []
+        self.score = 0
+        
+    def setGapPenalty(self, gap_penalty):
+        self.gapp = gap_penalty
+
+    def getGapPenalty(self):
+        return self.gapp
+
+    def setSequences(self, sequences):
+        self.seqs = sequences
+
+    def getSequences(self):
+        return self.seqs
+
+    def getAlignedSequences(self):
+        return self.seqsaligned
+
+    def getAlignedSeqIndexes(self):
+        return self.seqsindexed
+
+    def getAlignmentScore(self):
+        return self.score
+
+    def doAlignment(self):
+        """ Constructs multiple alignment with MUSCLE.. """
+        
+        records = []
+        for index, sequence in enumerate(self.seqs):
+            seq = Seq(sequence)
+            record = SeqRecord(seq, id = str(index))
+            records.append(record)
+        
+        # Maybe test if MUSCLE is available? Why though.
+        muscle_path = "bin\\"
+        if True: # platform-specifity goes here
+            muscle_exe = muscle_path + r"muscle3.8.31_i86win32.exe"
+        
+        #with open(muscle_path + "test.out", "w") as f:
+        #    SeqIO.write(records, f, "fasta")
+            
+        muscle_cline = MuscleCommandline(muscle_exe)
+        print(muscle_cline)
+        child = subprocess.Popen(str(muscle_cline),
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 #stderr=subprocess.PIPE, # Apparently muscle hangs on this. Somehow. Something about race conditions of stdputs on win?
+                                 universal_newlines=True,
+                                 shell=(sys.platform!="win32"))
+        
+        SeqIO.write(records, child.stdin, "fasta")
+        
+        child.stdin.close()
+        #print(child.stdout)
+        align = AlignIO.read(child.stdout, "fasta")
+        #print("alive")
+        #print(align)
+        
+        seqObjs = [x for x in align]
+        seqObjs.sort(key = lambda x: x.id) # MUSCLE groups seqs by distance. There is a -stable key, but it is not entirely debugged, so.
+        self.seqsaligned = [str(x.seq) for x in seqObjs]
+        
+        for seq in self.seqsaligned:
+            seqindexed = []
+            start = 0
+            for i, l in enumerate(seq):
+                if l!='-':
+                    start = i
+                    break
+            for i, l in enumerate(seq):
+                if l == '-':
+                    seqindexed.append(-1)
+                    start+=1
+                else:
+                    seqindexed.append(i-start)
+            self.seqsindexed.append(seqindexed)
+        
+        # go through the sequence indexes and mark the gaps with (-nextbaseindex - 1)
+        # so that the index lookups return a more informative value
+        for seq in self.seqsindexed:
+            seqgv = -1
+            for cnt in range(len(self.seqsindexed[0])):
+                if seq[cnt] == -1:
+                    seq[cnt] = seqgv
+                else:
+                    seqgv -= 1
 
         #print self.seq1indexed
 
