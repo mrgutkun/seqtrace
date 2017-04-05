@@ -22,7 +22,7 @@ from Bio import SeqIO
 
 import subprocess
 import sys
-import os.path
+import os
 
 
 class PairwiseAlignment:
@@ -278,8 +278,15 @@ class MultipleAlignment:
 
         muscle_path =  os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin"))
         #print(muscle_path)
-        if True: # platform-specifity goes here
-            muscle_exe = os.path.join(muscle_path, "muscle3.8.31_i86win32.exe")
+        if sys.platform.startswith('win32'): # platform-specifity goes here
+            muscle_name = "muscle3.8.31_i86win32.exe"
+        elif sys.platform.startswith('linux'):
+            muscle_name = "muscle3.8.31_i86linux32"
+        elif sys.platform.startswith('darwin'):
+            muscle_name = "muscle3.8.31_i86darwin32"
+        else:
+            raise
+        muscle_exe = os.path.join(muscle_path, muscle_name)
         
         #with open(muscle_path + "test.out", "w") as f:
         #    SeqIO.write(records, f, "fasta")

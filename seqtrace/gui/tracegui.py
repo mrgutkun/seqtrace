@@ -534,7 +534,6 @@ class SequenceTraceLayout(gtk.VBox):
         for i in range(len(seqindexes)):
             self.seqt_viewers[i].scrollTo(seqindexes[i])
             self.seqt_viewers[i].getViewer().highlightBase(seqindexes[i])
-        print(seqindexes)
         
 
         # If scroll synchronization was initially enabled, relock the scrollbars.
