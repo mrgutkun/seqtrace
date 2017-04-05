@@ -511,7 +511,7 @@ class SequenceTraceLayout(gtk.VBox):
         self.pack_start(self.consv, expand=False, fill=True)
 
         # If there are two trace viewers, initialize synchronized scrolling.
-        if len(self.seqt_viewers) == 2:
+        if len(self.seqt_viewers) >= 2:
             # Initialize the synchronized scrolling when the VBox requests to be
             # mapped to the display so that we get the correct adjustment values.
             self.connect('map', self.initializeLockedScrolling)
@@ -523,7 +523,7 @@ class SequenceTraceLayout(gtk.VBox):
 
         self.connect('destroy', self.destroyed)
 
-    def alignmentClicked(self, seqnum, seq1index, seq2index):
+    def alignmentClicked(self, seqnum, seqindexes):
         # If there are two trace viewers and their scrolling is synchronized,
         # unlock them before jumping to the clicked position in the alignment.
         relock = self.scroll_locked
@@ -531,11 +531,11 @@ class SequenceTraceLayout(gtk.VBox):
             self.unlockScrolling()
 
         #print seqnum, seq1index, seq2index
-        self.seqt_viewers[0].scrollTo(seq1index)
-        self.seqt_viewers[0].getViewer().highlightBase(seq1index)
-        if len(self.seqt_viewers) == 2:
-            self.seqt_viewers[1].scrollTo(seq2index)
-            self.seqt_viewers[1].getViewer().highlightBase(seq2index)
+        for i in range(len(seqindexes)):
+            self.seqt_viewers[i].scrollTo(seqindexes[i])
+            self.seqt_viewers[i].getViewer().highlightBase(seqindexes[i])
+        print(seqindexes)
+        
 
         # If scroll synchronization was initially enabled, relock the scrollbars.
         if relock:
@@ -553,48 +553,42 @@ class SequenceTraceLayout(gtk.VBox):
         self.adj_hids = []
 
         # Retrieve the scroll adjustments and set up the event handlers.
-        self.adjs.append(self.seqt_viewers[0].scrolledwin.get_hadjustment())
-        self.adj_hids.append(self.adjs[0].connect('value_changed', self.traceScrolled, 0))
-
-        self.adjs.append(self.seqt_viewers[1].scrolledwin.get_hadjustment())
-        self.adj_hids.append(self.adjs[1].connect('value_changed', self.traceScrolled, 1))
-
+        for viewer in self.seqt_viewers:
+            self.adjs.append(viewer.scrolledwin.get_hadjustment())
+        for index, thing in enumerate(self.adjs):
+            self.adj_hids.append(thing.connect('value_changed', self.traceScrolled, index))
+        
         # A list to track the offsets between the two scroll adjustments when
         # they are locked together.
-        self.adj_offsets = [0.0, 0.0]
+        self.adj_offsets = [0.0 for _ in self.adjs]
 
         csb = self.consv.getConsensusSequenceViewer().getConsensSeqBuilder()
-        seq0 = csb.getAlignedSequence(0)
-        seq1 = csb.getAlignedSequence(1)
+        self.numseqs = csb.getNumSeqs()
+        seqs = []
+        for i in range(self.numseqs):
+            seqs.append(csb.getAlignedSequence(i))
 
         # Get the positions of the first overlapping bases in the alignment (i.e., the start
         # of the left end gap).
-        lgindex = csb.getLeftEndGapStart()
+        lgindexes = csb.getLeftEndGapStarts()
 
         # Verify that there is actually a left end gap and overlapping bases.
-        if lgindex > 0 and seq0[lgindex] != '-' and seq1[lgindex] != '-':
-            # Figure out which trace has the left end gap.
-            if seq0[lgindex - 1] == '-':
-                seq0index = 0
-                seq1index = lgindex
-            else:
-                seq0index = lgindex
-                seq1index = 0
-                
-            seqt0 = self.seqt_viewers[0].getSequenceTrace()
-            seqt1 = self.seqt_viewers[1].getSequenceTrace()
+        if all([x>=0 for x in lgindexes]):
+            seqts = []
+            for i in range(self.numseqs):
+                seqts.append(self.seqt_viewers[i].getSequenceTrace())
 
             # Get the locations of the bases in each trace.
-            bpos0 = float(seqt0.getBaseCallPos(seq0index)) / seqt0.getTraceLength() * self.adjs[0].upper
-            bpos1 = float(seqt1.getBaseCallPos(seq1index)) / seqt1.getTraceLength() * self.adjs[1].upper
+            bposes = []
+            for i in range(self.numseqs):
+                bposes.append(float(seqts[i].getBaseCallPos(lgindexes[i])) / seqts[i].getTraceLength() * self.adjs[i].upper)
         else:
             # Either there is no left end gap or no overlapping bases, so just
             # set the offsets to 0.
-            bpos0 = bpos1 = 0
+            bposes = [0 for _ in range(self.numseqs)]
 
         # Set the starting offsets.
-        self.adj_offsets[0] = bpos0 - bpos1
-        self.adj_offsets[1] = bpos1 - bpos0
+        self.adj_offsets = bposes[:]
         #self.adj_offsets = [0.0, 0.0]
 
         self.scroll_locked = True
@@ -603,12 +597,12 @@ class SequenceTraceLayout(gtk.VBox):
         if self.scroll_locked:
             return
 
-        self.adjs[0].handler_unblock(self.adj_hids[0])
-        self.adjs[1].handler_unblock(self.adj_hids[1])
+        for i in range(self.numseqs):
+            self.adjs[i].handler_unblock(self.adj_hids[i])
 
-        # Save the offsets between the positions of the two adjustments.
-        self.adj_offsets[0] = self.adjs[0].get_value() - self.adjs[1].get_value()
-        self.adj_offsets[1] = self.adjs[1].get_value() - self.adjs[0].get_value()
+        # Save the offsets of the adjustments.
+        for i in range(self.numseqs):
+            self.adj_offsets[i] = self.adjs[i].get_value()
 
         self.scroll_locked = True
 
@@ -616,8 +610,8 @@ class SequenceTraceLayout(gtk.VBox):
         if not(self.scroll_locked):
             return
 
-        self.adjs[0].handler_block(self.adj_hids[0])
-        self.adjs[1].handler_block(self.adj_hids[1])
+        for adj, adj_hid in zip(self.adjs, self.adj_hids):
+            adj.handler_block(adj_hid)
 
         self.scroll_locked = False
 
@@ -628,20 +622,24 @@ class SequenceTraceLayout(gtk.VBox):
         #print adj.get_value()
 
         # Get the index of the other (non event-triggering) adjustment.
-        index2 = (index + 1) % 2
+        indexes = range(self.numseqs)
+        indexes.remove(index)
+        
+        for index2 in indexes:
+            # Avoid triggering a cascade of events.
+            self.adjs[index2].handler_block(self.adj_hids[index2])
+        
+        for index2 in indexes:
+            # Calculate the position of the other scrollbar adjustment.
+            value2 = adj.get_value() - self.adj_offsets[index] + self.adj_offsets[index2]
 
-        # Avoid triggering a cascade of events.
-        self.adjs[index2].handler_block(self.adj_hids[index2])
-
-        # Calculate the position of the other scrollbar adjustment.
-        value2 = adj.get_value() - self.adj_offsets[index]
-
-        # Update the other scroll adjustment if we're not outside of its bounds.
-        if value2 >= 0.0 and value2 <= (self.adjs[index2].get_upper() - self.adjs[index2].get_page_size()):
-            self.adjs[index2].set_value(value2)
-
-        # Re-enable the signal handler for the adjustment.
-        self.adjs[index2].handler_unblock(self.adj_hids[index2])
+            # Update the other scroll adjustment if we're not outside of its bounds.
+            if value2 >= 0.0 and value2 <= (self.adjs[index2].get_upper() - self.adjs[index2].get_page_size()):
+                self.adjs[index2].set_value(value2)
+        
+        for index2 in indexes:
+            # Re-enable the signal handler for the adjustment.
+            self.adjs[index2].handler_unblock(self.adj_hids[index2])
 
     def getTraceToolBar(self):
         return self.toolbar
@@ -738,16 +736,15 @@ class SequenceTraceLayout(gtk.VBox):
         toolbar.insert(t_item, -1)
 
         # if we got two sequences, build a combo box to choose between them
-        if len(self.seqt_viewers) == 2:
+        if len(self.seqt_viewers) >= 2:
             trace_combo = gtk.combo_box_new_text()
 
             # see if the forward trace is first or second
-            if self.seqt_viewers[0].getSequenceTrace().isReverseComplemented():
-                trace_combo.append_text('Reverse:')
-                trace_combo.append_text('Forward:')
-            else:
-                trace_combo.append_text('Forward:')
-                trace_combo.append_text('Reverse:')
+            for viewer in self.seqt_viewers:
+                if viewer.getSequenceTrace().isReverseComplemented():
+                    trace_combo.append_text('Reverse:')
+                else:
+                    trace_combo.append_text('Forward:')
             trace_combo.append_text('Both:')
             trace_combo.set_active(0)
             trace_combo.connect('changed', self.traceComboBox)

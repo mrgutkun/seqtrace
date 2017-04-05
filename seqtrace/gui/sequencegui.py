@@ -148,21 +148,16 @@ class ConsensusSequenceViewer(gtk.DrawingArea, Observable):
         if event.button == 1:
             if (event.y > self.al_top) and (event.y < alend):
                 # the mouse is over the alignment display
-                if event.y > (self.al_top + self.fheight):
-                    seqnum = 1
-                else:
-                    seqnum = 0
-    
-                seq1index = self.cons.getActualSeqIndex(0, bindex)
-                if self.numseqs == 2:
-                    seq2index = self.cons.getActualSeqIndex(1, bindex)
-                else:
-                    seq2index = -1
-    
+                seqnum = (event.y - self.al_top) / self.fheight
+                
+                seqindexes = [] 
+                for i in range(self.numseqs):
+                    seqindexes.append(self.cons.getActualSeqIndex(i, bindex))
+                
                 if self.highlighted != bindex:
                     self.highlightAlignmentInternal(self.highlighted)
                 self.highlighted = bindex
-                self.notifyObservers('alignment_clicked', (seqnum, seq1index, seq2index))
+                self.notifyObservers('alignment_clicked', (seqnum, seqindexes))
             elif (event.y > (alend + self.padding)) and (event.y < consend):
                 # the mouse is over the consensus sequence display
 
@@ -466,10 +461,10 @@ class ConsensusSequenceViewer(gtk.DrawingArea, Observable):
                 self.drawAlignmentBase(dwin, gc, palign[index], x, y)
 
     def drawAlignment(self, dwin, gc, startindex, endindex):
-        align1 = self.cons.getAlignedSequence(0)
-        if self.numseqs == 2:
-            align2 = self.cons.getAlignedSequence(1)
-
+        aligns = []
+        for i in range(self.numseqs):
+            aligns.append(self.cons.getAlignedSequence(i))
+        
         y = self.al_top + self.fheight*self.numseqs
         gc.set_rgb_fg_color(gtk.gdk.color_parse('black'))
         dwin.draw_line(gc, startindex*self.fwidth, self.al_top-1, (endindex+1)*self.fwidth, self.al_top-1)
@@ -480,12 +475,9 @@ class ConsensusSequenceViewer(gtk.DrawingArea, Observable):
             x = index * self.fwidth
             y = self.margins
 
-            # Draw the base from the first aligned sequence.
-            self.drawAlignmentBase(dwin, gc, align1[index], x, self.al_top)
-
-            # Draw the base from the second aligned sequence, if present.
-            if self.numseqs == 2:
-                self.drawAlignmentBase(dwin, gc, align2[index], x, self.al_top + self.fheight)
+            # Draw the base from the aligned sequences.
+            for i in range(self.numseqs):
+                self.drawAlignmentBase(dwin, gc, aligns[i][index], x, self.al_top + self.fheight * i)
 
     def drawAlignmentBase(self, dwin, gc, base, x, y):
         gc.set_rgb_fg_color(self.bgcolors[base])

@@ -316,20 +316,17 @@ class TraceWindow(gtk.Window, CommonDialogs, Observable):
 
     def loadSequenceTraces(self):
         self.numseqs = self.cons.getNumSeqs()
-        self.seqt1 = self.cons.getSequenceTrace(0)
-        if self.numseqs == 2:
-            self.seqt2 = self.cons.getSequenceTrace(1)
-        else:
-            self.seqt2 = None
-
-        viewer = ScrollAndZoomSTVDecorator(SequenceTraceViewer(self.seqt1))
-        if self.numseqs == 2:
-            viewer = FwdRevSTVDecorator(viewer)
-        self.viewers = [ viewer ]
-        if self.seqt2 != None:
-            viewer = ScrollAndZoomSTVDecorator(SequenceTraceViewer(self.seqt2))
-            self.viewers.append(FwdRevSTVDecorator(viewer))
-
+        self.seqts = []
+        for i in range(self.numseqs):
+            self.seqts.append(self.cons.getSequenceTrace(i))
+        
+        self.viewers = []
+        for seqt in self.seqts:
+            viewer = ScrollAndZoomSTVDecorator(SequenceTraceViewer(seqt))
+            if self.numseqs >= 2:
+                viewer = FwdRevSTVDecorator(viewer)
+            self.viewers.append(viewer)
+        
         self.consview = ScrolledConsensusSequenceViewer(self.cons)
 
         # add the sequence trace layout to the window
@@ -344,9 +341,10 @@ class TraceWindow(gtk.Window, CommonDialogs, Observable):
         self.cons.registerObserver('undo_state_changed', self.undoStateChanged)
         self.cons.registerObserver('redo_state_changed', self.redoStateChanged)
 
-        title = 'Trace View: ' + self.seqt1.getFileName()
-        if self.numseqs == 2:
-            title += ', ' + self.seqt2.getFileName()
+        title = 'Trace View: ' + ', '.join([seqt.getFileName() for seqt in self.seqts])
+        #if len(title) > 200:
+        #    title = title[:200] + '...'
+        
         self.set_title(title)
 
     def lockScrolling(self, widget):
@@ -452,9 +450,8 @@ class TraceWindow(gtk.Window, CommonDialogs, Observable):
         seqtraces = list()
 
         self.numseqs = self.cons.getNumSeqs()
-        seqtraces.append(self.cons.getSequenceTrace(0))
-        if self.numseqs == 2:
-            seqtraces.append(self.cons.getSequenceTrace(1))
+        for i in range(self.numseqs):
+            seqtraces.append(self.cons.getSequenceTrace(i))
 
         if self.infowin != None:
             self.infowin.present()
@@ -486,9 +483,8 @@ class TraceWindow(gtk.Window, CommonDialogs, Observable):
             return
 
         desc = 'consensus'
-        seqfname = self.cons.getSequenceTrace(0).getFileName()
-        if self.numseqs == 2:
-            seqfname += ', ' + self.cons.getSequenceTrace(1).getFileName()
+        seqfname = ', '.join([seqt.getFileName() for seqt in self.seqts])
+        
         sw.addUnalignedSequence(self.cons.getCompactConsensus(), seqfname, desc)
 
         sw.write()

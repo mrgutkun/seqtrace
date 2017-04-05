@@ -675,6 +675,30 @@ class ConsensSeqBuilder:
             return -1
         else:
             return lgindex
+            
+    def getLeftEndGapStarts(self):
+        """
+        Returns the indexes of the start of the left end gap of all sequences. 
+        If there are overlapping bases in the alignment, this will also be the 
+        index of the first pair of overlapping bases. Empty sequences will have index of -1.
+        """
+
+        lgindexes = [-1 for _ in range(self.numseqs)]
+        unended_seqs = range(self.numseqs)
+        
+        # Move past any end positions where both trace sequences are gaps.
+        # This can happen when primers are aligned to the ends.
+        for lgindex in range(len(self.alignedseqs[0])):
+            unended_seqs_ = unended_seqs[:] # removing elements from iterated list is unsafe, so here's a shallow copy.
+            for seq_i in unended_seqs_:
+                if self.alignedseqs[seq_i][lgindex] != '-':
+                    lgindexes[seq_i] = lgindex
+                    unended_seqs.remove(seq_i)
+            if len(unended_seqs) == 0: 
+                break
+
+        return lgindexes
+
 
     def getRightEndGapStart(self):
         """
