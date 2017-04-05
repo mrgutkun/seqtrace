@@ -22,6 +22,8 @@ from Bio import SeqIO
 
 import subprocess
 import sys
+import os.path
+
 
 class PairwiseAlignment:
     """
@@ -273,15 +275,16 @@ class MultipleAlignment:
             records.append(record)
         
         # Maybe test if MUSCLE is available? Why though.
-        muscle_path = "bin\\"
+
+        muscle_path =  os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin"))
+        #print(muscle_path)
         if True: # platform-specifity goes here
-            muscle_exe = muscle_path + r"muscle3.8.31_i86win32.exe"
+            muscle_exe = os.path.join(muscle_path, "muscle3.8.31_i86win32.exe")
         
         #with open(muscle_path + "test.out", "w") as f:
         #    SeqIO.write(records, f, "fasta")
-            
         muscle_cline = MuscleCommandline(muscle_exe)
-        print(muscle_cline)
+        #print(muscle_cline)
         child = subprocess.Popen(str(muscle_cline),
                                  stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE,
@@ -303,19 +306,15 @@ class MultipleAlignment:
         
         for seq in self.seqsaligned:
             seqindexed = []
-            start = 0
-            for i, l in enumerate(seq):
-                if l!='-':
-                    start = i
-                    break
-            for i, l in enumerate(seq):
+            lettercount = 0
+            for l in seq:
                 if l == '-':
                     seqindexed.append(-1)
-                    start+=1
                 else:
-                    seqindexed.append(i-start)
+                    seqindexed.append(lettercount)
+                    lettercount += 1
             self.seqsindexed.append(seqindexed)
-        
+
         # go through the sequence indexes and mark the gaps with (-nextbaseindex - 1)
         # so that the index lookups return a more informative value
         for seq in self.seqsindexed:

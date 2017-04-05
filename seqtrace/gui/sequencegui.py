@@ -148,7 +148,7 @@ class ConsensusSequenceViewer(gtk.DrawingArea, Observable):
         if event.button == 1:
             if (event.y > self.al_top) and (event.y < alend):
                 # the mouse is over the alignment display
-                seqnum = (event.y - self.al_top) / self.fheight
+                seqnum = int((event.y - self.al_top) / self.fheight)
                 
                 seqindexes = [] 
                 for i in range(self.numseqs):
